@@ -184,7 +184,7 @@ public class Consumer {
 	private Properties buildConsumerProperties() {
 		Properties properties = new Properties();
 		properties.put("bootstrap.servers", "tiny.canadacentral.cloudapp.azure.com:29092");
-		properties.put("group.id", "account-event-topic-group2");
+		properties.put("group.id", "account-event-topic-group-v1");
 		properties.put("enable.auto.commit", "false");
 		properties.put("max.poll.records", "200");
 		properties.put("key.deserializer", StringDeserializer.class);
