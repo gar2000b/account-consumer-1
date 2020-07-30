@@ -20,7 +20,7 @@ public class DbClient {
 
 	public DbClient() {
 		System.out.println("Initializing MongoDB Client");
-		String host = "colossal.canadacentral.cloudapp.azure.com";
+		String host = "localhost";
 		int port = 27017;
 		String user = "account-consumer-1";
 		String pwd = "password";

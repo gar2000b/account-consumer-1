@@ -19,7 +19,7 @@ public class DbSnapshotClient {
 
 	public DbSnapshotClient() {
 		System.out.println("Initializing MongoDB Client");
-		String host = "colossal.canadacentral.cloudapp.azure.com";
+		String host = "localhost";
 		int port = 27017;
 		String user = "snapshots";
 		String pwd = "password";
