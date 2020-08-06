@@ -1,6 +1,8 @@
 package com.onlineinteract.workflow.domain.account.bus;
 
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 
@@ -35,7 +37,7 @@ public class Consumer {
 
 	@Autowired
 	AccountRepository accountRepository;
-	
+
 	@Autowired
 	SnapshotRepository snapshotRepository;
 
@@ -62,14 +64,14 @@ public class Consumer {
 		consumer = new KafkaConsumer<>(buildProperties);
 		consumer.subscribe(Arrays.asList(ACCOUNT_EVENT_TOPIC));
 	}
-	
+
 	private void reconstituteState() {
 		accountRepository.removeAllDocuments();
 		determineBeginSnapshotOffset();
 		if (beginSnapshotOffset > 0)
 			reconstitutePreviousSnapshot();
 
-		consumer.poll(0);
+		consumer.poll(Duration.ofMillis(0));
 		for (TopicPartition partition : consumer.assignment())
 			consumer.seek(partition, beginSnapshotOffset);
 		try {
@@ -81,7 +83,7 @@ public class Consumer {
 		runningFlag = true;
 		System.out.println("Spinning up kafka account consumer");
 		while (runningFlag) {
-			ConsumerRecords<String, AccountEvent> records = consumer.poll(100);
+			ConsumerRecords<String, AccountEvent> records = consumer.poll(Duration.ofMillis(1000));
 //			System.out.println("*** records count 2: " + records.count());
 			for (ConsumerRecord<String, AccountEvent> consumerRecord : records) {
 //				System.out.println("Consuming event from account-event-topic with id/key of: " + consumerRecord.key());
@@ -102,9 +104,9 @@ public class Consumer {
 		}
 		System.out.println("Shutting down kafka account consumer");
 	}
-	
+
 	private void reconstitutePreviousSnapshot() {
-		consumer.poll(0);
+		consumer.poll(Duration.ofMillis(0));
 		for (TopicPartition partition : consumer.assignment())
 			consumer.seek(partition, beginSnapshotOffset);
 		try {
@@ -117,7 +119,7 @@ public class Consumer {
 		System.out.println("Spinning up kafka account consumer to reconstitute previous snapshot prior to "
 				+ "replaying events on top to create new snapshot");
 		while (runningFlag) {
-			ConsumerRecords<String, AccountEvent> records = consumer.poll(100);
+			ConsumerRecords<String, AccountEvent> records = consumer.poll(Duration.ofMillis(1000));
 			System.out.println("*** records count 1: " + records.count());
 			for (ConsumerRecord<String, AccountEvent> consumerRecord : records) {
 				System.out.println("Consuming event from account-event-topic with id/key of: " + consumerRecord.key());
@@ -139,17 +141,32 @@ public class Consumer {
 	}
 
 	private void processRecords() {
-		consumer.poll(0);
+		consumer.poll(Duration.ofMillis(0));
 		// consumer.seekToBeginning(consumer.assignment());
 		runningFlag = true;
 		System.out.println("Spinning up kafka account consumer");
 		new Thread(() -> {
 			while (runningFlag) {
-				ConsumerRecords<String, AccountEvent> records = consumer.poll(100);
+				ConsumerRecords<String, AccountEvent> records;
+				try {
+					records = consumer.poll(Duration.ofMillis(1000));
+				} catch (Error e) {
+					System.out.println("There was a problem consuming the next record");
+					continue;
+				}
+				try {
+					consumer.commitSync();
+				} catch (Error e) {
+					System.out.println("There was a problem committing the offset");
+					continue;
+				}
 				for (ConsumerRecord<String, AccountEvent> consumerRecord : records) {
-//					System.out.println(
-//							"Consuming event from customer-event-topic with id/key of: " + consumerRecord.key());
 					AccountEvent accountEvent = (AccountEvent) consumerRecord.value();
+					System.out.println("Consuming event from customer-event-topic with id/key of: "
+							+ consumerRecord.key() + " - offset: " + consumerRecord.offset() + " - partition: "
+							+ consumerRecord.partition() + " at " + new Date().getTime() + " - event type: "
+							+ accountEvent.getEventType().toString() + " - opening balance: "
+							+ accountEvent.getV1().getOpeningBalance() + " - name: " + accountEvent.getV1().getName());
 					if (accountEvent.getEventType().toString().contains("AccountCreatedEvent"))
 						accountRepository.createAccount(accountEvent.getV1());
 					if (accountEvent.getEventType().toString().contains("AccountUpdatedEvent"))
@@ -160,7 +177,7 @@ public class Consumer {
 			System.out.println("Shutting down kafka account consumer");
 		}).start();
 	}
-	
+
 	private void determineBeginSnapshotOffset() {
 		SnapshotInfo snapshotInfo = snapshotRepository.getSnapshotInfo();
 		Domain accountsDomain = snapshotInfo.getDomains().get("accounts");
@@ -188,7 +205,7 @@ public class Consumer {
 		properties.put("bootstrap.servers", "localhost:29092,localhost:39092,localhost:49092");
 		properties.put("group.id", "account-event-topic-group-v1");
 		properties.put("enable.auto.commit", "false");
-		properties.put("max.poll.records", "200");
+		properties.put("max.poll.records", "1");
 		properties.put("key.deserializer", StringDeserializer.class);
 		properties.put("value.deserializer", KafkaAvroDeserializer.class);
 		properties.put("schema.registry.url", "http://localhost:8081");
